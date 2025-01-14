@@ -17,18 +17,13 @@ limitations under the License.
 package chartutil
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
 func TestExpand(t *testing.T) {
-	dest, err := ioutil.TempDir("", "helm-testing-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dest)
+	dest := t.TempDir()
 
 	reader, err := os.Open("testdata/frobnitz-1.2.3.tgz")
 	if err != nil {
@@ -69,7 +64,7 @@ func TestExpand(t *testing.T) {
 			t.Fatal(err)
 		}
 		// os.Stat can return different values for directories, based on the OS
-		// for Linux, for example, os.Stat alwaty returns the size of the directory
+		// for Linux, for example, os.Stat always returns the size of the directory
 		// (value-4096) regardless of the size of the contents of the directory
 		mode := expect.Mode()
 		if !mode.IsDir() {
@@ -81,11 +76,7 @@ func TestExpand(t *testing.T) {
 }
 
 func TestExpandFile(t *testing.T) {
-	dest, err := ioutil.TempDir("", "helm-testing-")
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(dest)
+	dest := t.TempDir()
 
 	if err := ExpandFile(dest, "testdata/frobnitz-1.2.3.tgz"); err != nil {
 		t.Fatal(err)
@@ -121,7 +112,7 @@ func TestExpandFile(t *testing.T) {
 			t.Fatal(err)
 		}
 		// os.Stat can return different values for directories, based on the OS
-		// for Linux, for example, os.Stat alwaty returns the size of the directory
+		// for Linux, for example, os.Stat always returns the size of the directory
 		// (value-4096) regardless of the size of the contents of the directory
 		mode := expect.Mode()
 		if !mode.IsDir() {

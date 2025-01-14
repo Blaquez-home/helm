@@ -26,18 +26,25 @@ import (
 	"github.com/Masterminds/semver/v3"
 	"github.com/gosuri/uitable"
 
-	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/chart/loader"
+	"helm.sh/helm/v4/pkg/chart"
+	"helm.sh/helm/v4/pkg/chart/loader"
 )
 
 // Dependency is the action for building a given chart's dependency tree.
 //
 // It provides the implementation of 'helm dependency' and its respective subcommands.
 type Dependency struct {
-	Verify      bool
-	Keyring     string
-	SkipRefresh bool
-	ColumnWidth uint
+	Verify                bool
+	Keyring               string
+	SkipRefresh           bool
+	ColumnWidth           uint
+	Username              string
+	Password              string
+	CertFile              string
+	KeyFile               string
+	CaFile                string
+	InsecureSkipTLSverify bool
+	PlainHTTP             bool
 }
 
 // NewDependency creates a new Dependency object with the given configuration.
@@ -193,7 +200,7 @@ func (d *Dependency) printDependencies(chartpath string, out io.Writer, c *chart
 }
 
 // printMissing prints warnings about charts that are present on disk, but are
-// not in Charts.yaml.
+// not in Chart.yaml.
 func (d *Dependency) printMissing(chartpath string, out io.Writer, reqs []*chart.Dependency) {
 	folder := filepath.Join(chartpath, "charts/*")
 	files, err := filepath.Glob(folder)

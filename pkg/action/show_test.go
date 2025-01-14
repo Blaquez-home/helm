@@ -19,15 +19,19 @@ package action
 import (
 	"testing"
 
-	"helm.sh/helm/v3/pkg/chart"
+	"helm.sh/helm/v4/pkg/chart"
 )
 
 func TestShow(t *testing.T) {
-	client := NewShow(ShowAll)
+	config := actionConfigFixture(t)
+	client := NewShow(ShowAll, config)
 	client.chart = &chart.Chart{
 		Metadata: &chart.Metadata{Name: "alpine"},
 		Files: []*chart.File{
 			{Name: "README.md", Data: []byte("README\n")},
+			{Name: "crds/ignoreme.txt", Data: []byte("error")},
+			{Name: "crds/foo.yaml", Data: []byte("---\nfoo\n")},
+			{Name: "crds/bar.json", Data: []byte("---\nbar\n")},
 		},
 		Raw: []*chart.File{
 			{Name: "values.yaml", Data: []byte("VALUES\n")},
@@ -48,6 +52,12 @@ VALUES
 ---
 README
 
+---
+foo
+
+---
+bar
+
 `
 	if output != expect {
 		t.Errorf("Expected\n%q\nGot\n%q\n", expect, output)
@@ -55,7 +65,8 @@ README
 }
 
 func TestShowNoValues(t *testing.T) {
-	client := NewShow(ShowAll)
+	config := actionConfigFixture(t)
+	client := NewShow(ShowAll, config)
 	client.chart = new(chart.Chart)
 
 	// Regression tests for missing values. See issue #1024.
@@ -71,7 +82,8 @@ func TestShowNoValues(t *testing.T) {
 }
 
 func TestShowValuesByJsonPathFormat(t *testing.T) {
-	client := NewShow(ShowValues)
+	config := actionConfigFixture(t)
+	client := NewShow(ShowValues, config)
 	client.JSONPathTemplate = "{$.nestedKey.simpleKey}"
 	client.chart = buildChart(withSampleValues())
 	output, err := client.Run("")
@@ -79,6 +91,66 @@ func TestShowValuesByJsonPathFormat(t *testing.T) {
 		t.Fatal(err)
 	}
 	expect := "simpleValue"
+	if output != expect {
+		t.Errorf("Expected\n%q\nGot\n%q\n", expect, output)
+	}
+}
+
+func TestShowCRDs(t *testing.T) {
+	config := actionConfigFixture(t)
+	client := NewShow(ShowCRDs, config)
+	client.chart = &chart.Chart{
+		Metadata: &chart.Metadata{Name: "alpine"},
+		Files: []*chart.File{
+			{Name: "crds/ignoreme.txt", Data: []byte("error")},
+			{Name: "crds/foo.yaml", Data: []byte("---\nfoo\n")},
+			{Name: "crds/bar.json", Data: []byte("---\nbar\n")},
+		},
+	}
+
+	output, err := client.Run("")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expect := `---
+foo
+
+---
+bar
+
+`
+	if output != expect {
+		t.Errorf("Expected\n%q\nGot\n%q\n", expect, output)
+	}
+}
+
+func TestShowNoReadme(t *testing.T) {
+	config := actionConfigFixture(t)
+	client := NewShow(ShowAll, config)
+	client.chart = &chart.Chart{
+		Metadata: &chart.Metadata{Name: "alpine"},
+		Files: []*chart.File{
+			{Name: "crds/ignoreme.txt", Data: []byte("error")},
+			{Name: "crds/foo.yaml", Data: []byte("---\nfoo\n")},
+			{Name: "crds/bar.json", Data: []byte("---\nbar\n")},
+		},
+	}
+
+	output, err := client.Run("")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	expect := `name: alpine
+
+---
+foo
+
+---
+bar
+
+`
 	if output != expect {
 		t.Errorf("Expected\n%q\nGot\n%q\n", expect, output)
 	}

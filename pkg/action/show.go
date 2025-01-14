@@ -17,6 +17,7 @@ limitations under the License.
 package action
 
 import (
+	"bytes"
 	"fmt"
 	"strings"
 
@@ -24,9 +25,10 @@ import (
 	"k8s.io/cli-runtime/pkg/printers"
 	"sigs.k8s.io/yaml"
 
-	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/chart/loader"
-	"helm.sh/helm/v3/pkg/chartutil"
+	"helm.sh/helm/v4/pkg/chart"
+	"helm.sh/helm/v4/pkg/chart/loader"
+	"helm.sh/helm/v4/pkg/chartutil"
+	"helm.sh/helm/v4/pkg/registry"
 )
 
 // ShowOutputFormat is the format of the output of `helm show`
@@ -41,6 +43,8 @@ const (
 	ShowValues ShowOutputFormat = "values"
 	// ShowReadme is the format which only shows the chart's README
 	ShowReadme ShowOutputFormat = "readme"
+	// ShowCRDs is the format which only shows the chart's CRDs
+	ShowCRDs ShowOutputFormat = "crds"
 )
 
 var readmeFileNames = []string{"readme.md", "readme.txt", "readme"}
@@ -61,10 +65,18 @@ type Show struct {
 }
 
 // NewShow creates a new Show object with the given configuration.
-func NewShow(output ShowOutputFormat) *Show {
-	return &Show{
+func NewShow(output ShowOutputFormat, cfg *Configuration) *Show {
+	sh := &Show{
 		OutputFormat: output,
 	}
+	sh.ChartPathOptions.registryClient = cfg.RegistryClient
+
+	return sh
+}
+
+// SetRegistryClient sets the registry client to use when pulling a chart from a registry.
+func (s *Show) SetRegistryClient(client *registry.Client) {
+	s.ChartPathOptions.registryClient = client
 }
 
 // Run executes 'helm show' against the given release.
@@ -106,14 +118,25 @@ func (s *Show) Run(chartpath string) (string, error) {
 	}
 
 	if s.OutputFormat == ShowReadme || s.OutputFormat == ShowAll {
-		if s.OutputFormat == ShowAll {
-			fmt.Fprintln(&out, "---")
-		}
 		readme := findReadme(s.chart.Files)
-		if readme == nil {
-			return out.String(), nil
+		if readme != nil {
+			if s.OutputFormat == ShowAll {
+				fmt.Fprintln(&out, "---")
+			}
+			fmt.Fprintf(&out, "%s\n", readme.Data)
 		}
-		fmt.Fprintf(&out, "%s\n", readme.Data)
+	}
+
+	if s.OutputFormat == ShowCRDs || s.OutputFormat == ShowAll {
+		crds := s.chart.CRDObjects()
+		if len(crds) > 0 {
+			if s.OutputFormat == ShowAll && !bytes.HasPrefix(crds[0].File.Data, []byte("---")) {
+				fmt.Fprintln(&out, "---")
+			}
+			for _, crd := range crds {
+				fmt.Fprintf(&out, "%s\n", string(crd.File.Data))
+			}
+		}
 	}
 	return out.String(), nil
 }
@@ -121,6 +144,9 @@ func (s *Show) Run(chartpath string) (string, error) {
 func findReadme(files []*chart.File) (file *chart.File) {
 	for _, file := range files {
 		for _, n := range readmeFileNames {
+			if file == nil {
+				continue
+			}
 			if strings.EqualFold(file.Name, n) {
 				return file
 			}

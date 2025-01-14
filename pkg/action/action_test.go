@@ -5,7 +5,7 @@ Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
-    http://www.apache.org/licenses/LICENSE-2.0
+	http://www.apache.org/licenses/LICENSE-2.0
 
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,25 +16,22 @@ limitations under the License.
 package action
 
 import (
-	"context"
 	"flag"
-	"io/ioutil"
-	"net/http"
-	"os"
-	"path/filepath"
+	"fmt"
+	"io"
 	"testing"
 
-	dockerauth "github.com/deislabs/oras/pkg/auth/docker"
+	"github.com/stretchr/testify/assert"
 	fakeclientset "k8s.io/client-go/kubernetes/fake"
 
-	"helm.sh/helm/v3/internal/experimental/registry"
-	"helm.sh/helm/v3/pkg/chart"
-	"helm.sh/helm/v3/pkg/chartutil"
-	kubefake "helm.sh/helm/v3/pkg/kube/fake"
-	"helm.sh/helm/v3/pkg/release"
-	"helm.sh/helm/v3/pkg/storage"
-	"helm.sh/helm/v3/pkg/storage/driver"
-	"helm.sh/helm/v3/pkg/time"
+	"helm.sh/helm/v4/pkg/chart"
+	"helm.sh/helm/v4/pkg/chartutil"
+	kubefake "helm.sh/helm/v4/pkg/kube/fake"
+	"helm.sh/helm/v4/pkg/registry"
+	"helm.sh/helm/v4/pkg/release"
+	"helm.sh/helm/v4/pkg/storage"
+	"helm.sh/helm/v4/pkg/storage/driver"
+	"helm.sh/helm/v4/pkg/time"
 )
 
 var verbose = flag.Bool("test.log", false, "enable test logging")
@@ -42,47 +39,14 @@ var verbose = flag.Bool("test.log", false, "enable test logging")
 func actionConfigFixture(t *testing.T) *Configuration {
 	t.Helper()
 
-	client, err := dockerauth.NewClient()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	resolver, err := client.Resolver(context.Background(), http.DefaultClient, false)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	tdir, err := ioutil.TempDir("", "helm-action-test")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	t.Cleanup(func() { os.RemoveAll(tdir) })
-
-	cache, err := registry.NewCache(
-		registry.CacheOptDebug(true),
-		registry.CacheOptRoot(filepath.Join(tdir, registry.CacheRootDir)),
-	)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	registryClient, err := registry.NewClient(
-		registry.ClientOptAuthorizer(&registry.Authorizer{
-			Client: client,
-		}),
-		registry.ClientOptResolver(&registry.Resolver{
-			Resolver: resolver,
-		}),
-		registry.ClientOptCache(cache),
-	)
+	registryClient, err := registry.NewClient()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	return &Configuration{
 		Releases:       storage.Init(driver.NewMemory()),
-		KubeClient:     &kubefake.FailingKubeClient{PrintingKubeClient: kubefake.PrintingKubeClient{Out: ioutil.Discard}},
+		KubeClient:     &kubefake.FailingKubeClient{PrintingKubeClient: kubefake.PrintingKubeClient{Out: io.Discard}},
 		Capabilities:   chartutil.DefaultCapabilities,
 		RegistryClient: registryClient,
 		Log: func(format string, v ...interface{}) {
@@ -233,6 +197,13 @@ func withSampleTemplates() chartOption {
 	}
 }
 
+func withSampleSecret() chartOption {
+	return func(opts *chartOptions) {
+		sampleSecret := &chart.File{Name: "templates/secret.yaml", Data: []byte("apiVersion: v1\nkind: Secret\n")}
+		opts.Templates = append(opts.Templates, sampleSecret)
+	}
+}
+
 func withSampleIncludingIncorrectTemplates() chartOption {
 	return func(opts *chartOptions) {
 		sampleTemplates := []*chart.File{
@@ -301,6 +272,74 @@ func namedReleaseStub(name string, status release.Status) *release.Release {
 				},
 			},
 		},
+	}
+}
+
+func TestConfiguration_Init(t *testing.T) {
+	tests := []struct {
+		name               string
+		helmDriver         string
+		expectedDriverType interface{}
+		expectErr          bool
+		errMsg             string
+	}{
+		{
+			name:               "Test secret driver",
+			helmDriver:         "secret",
+			expectedDriverType: &driver.Secrets{},
+		},
+		{
+			name:               "Test secrets driver",
+			helmDriver:         "secrets",
+			expectedDriverType: &driver.Secrets{},
+		},
+		{
+			name:               "Test empty driver",
+			helmDriver:         "",
+			expectedDriverType: &driver.Secrets{},
+		},
+		{
+			name:               "Test configmap driver",
+			helmDriver:         "configmap",
+			expectedDriverType: &driver.ConfigMaps{},
+		},
+		{
+			name:               "Test configmaps driver",
+			helmDriver:         "configmaps",
+			expectedDriverType: &driver.ConfigMaps{},
+		},
+		{
+			name:               "Test memory driver",
+			helmDriver:         "memory",
+			expectedDriverType: &driver.Memory{},
+		},
+		{
+			name:       "Test sql driver",
+			helmDriver: "sql",
+			expectErr:  true,
+			errMsg:     "unable to instantiate SQL driver",
+		},
+		{
+			name:       "Test unknown driver",
+			helmDriver: "someDriver",
+			expectErr:  true,
+			errMsg:     fmt.Sprintf("unknown driver %q", "someDriver"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &Configuration{}
+
+			actualErr := cfg.Init(nil, "default", tt.helmDriver, nil)
+			if tt.expectErr {
+				assert.Error(t, actualErr)
+				assert.Contains(t, actualErr.Error(), tt.errMsg)
+			} else {
+				assert.NoError(t, actualErr)
+				assert.IsType(t, tt.expectedDriverType, cfg.Releases.Driver)
+			}
+		})
 	}
 }
 
