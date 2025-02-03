@@ -21,8 +21,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"helm.sh/helm/v3/cmd/helm/require"
-	"helm.sh/helm/v3/pkg/action"
+	"helm.sh/helm/v4/cmd/helm/require"
+	"helm.sh/helm/v4/pkg/action"
 )
 
 const registryLogoutDesc = `
@@ -31,12 +31,12 @@ Remove credentials stored for a remote registry.
 
 func newRegistryLogoutCmd(cfg *action.Configuration, out io.Writer) *cobra.Command {
 	return &cobra.Command{
-		Use:    "logout [host]",
-		Short:  "logout from a registry",
-		Long:   registryLogoutDesc,
-		Args:   require.MinimumNArgs(1),
-		Hidden: !FeatureGateOCI.IsEnabled(),
-		RunE: func(cmd *cobra.Command, args []string) error {
+		Use:               "logout [host]",
+		Short:             "logout from a registry",
+		Long:              registryLogoutDesc,
+		Args:              require.MinimumNArgs(1),
+		ValidArgsFunction: cobra.NoFileCompletions,
+		RunE: func(_ *cobra.Command, args []string) error {
 			hostname := args[0]
 			return action.NewRegistryLogout(cfg).Run(out, hostname)
 		},

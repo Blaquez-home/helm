@@ -25,7 +25,7 @@ import (
 	"github.com/xeipuuv/gojsonschema"
 	"sigs.k8s.io/yaml"
 
-	"helm.sh/helm/v3/pkg/chart"
+	"helm.sh/helm/v4/pkg/chart"
 )
 
 // ValidateAgainstSchema checks that values does not violate the structure laid out in schema
@@ -55,7 +55,13 @@ func ValidateAgainstSchema(chrt *chart.Chart, values map[string]interface{}) err
 }
 
 // ValidateAgainstSingleSchema checks that values does not violate the structure laid out in this schema
-func ValidateAgainstSingleSchema(values Values, schemaJSON []byte) error {
+func ValidateAgainstSingleSchema(values Values, schemaJSON []byte) (reterr error) {
+	defer func() {
+		if r := recover(); r != nil {
+			reterr = fmt.Errorf("unable to validate schema: %s", r)
+		}
+	}()
+
 	valuesData, err := yaml.Marshal(values)
 	if err != nil {
 		return err
